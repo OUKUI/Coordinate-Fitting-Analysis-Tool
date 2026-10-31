@@ -1,63 +1,38 @@
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QHeaderView,
-    QAbstractItemView, QTableWidgetItem)
-from PyQt5.QtCore import pyqtSignal, Qt
-from PyQt5.QtGui import QColor, QBrush
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QTableWidgetItem
+
+from fluent.widgets import FluentTableWidget
 from core.mold_advisor import get_advice_table
 
 
-class AdviceTableWidget(QWidget):
-    point_highlighted = pyqtSignal(int)
+class AdviceTableWidget(FluentTableWidget):
+    point_highlighted = Signal(int)
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self._setup_ui()
+        super().__init__(
+            headers=["#", "角度(°)", "偏差", "X", "Y", "修模建议"],
+            parent=parent)
+        self.setEditTriggers(FluentTableWidget.EditTrigger.NoEditTriggers)
+        self.itemSelectionChanged.connect(self._on_selection)
 
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.table = QTableWidget()
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels([
-            "#", "\u89d2\u5ea6(\u00b0)", "\u504f\u5dee", "X", "Y", "\u4fee\u6a21\u5efa\u8bae"
-        ])
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setStyleSheet("""
-            QTableWidget { background-color: #1e1e36; color: #e8e8f0;
-                           gridline-color: #333355; font-size: 9pt;
-                           border: none; border-radius: 4px; }
-            QHeaderView::section { background-color: #252542; color: #9898b8;
-                                   padding: 4px; border: 1px solid #333355;
-                                   font-size: 9pt; }
-            QTableWidget::item:selected { background-color: #3b82f6; color: white; }
-        """)
-        self.table.itemSelectionChanged.connect(self._on_selection)
-        layout.addWidget(self.table)
-
-    def update_data(self, polar_points):
+    def update_data(self, polar_points, unit="mm"):
+        factor = 1000.0 if unit == "μm" else 1.0
         rows = get_advice_table(polar_points)
-        self.table.setRowCount(len(rows))
+        self.setRowCount(len(rows))
         for i, row in enumerate(rows):
-            self.table.setItem(i, 0, QTableWidgetItem(str(row["no"])))
-            self.table.setItem(i, 1, QTableWidgetItem(row["angle"]))
-            item_delta = QTableWidgetItem(row["delta_r"])
+            self.setItem(i, 0, QTableWidgetItem(str(row["no"])))
+            self.setItem(i, 1, QTableWidgetItem(row["angle"]))
             val = float(row["delta_r"])
-            if val > 0:
-                item_delta.setForeground(QBrush(QColor("#f87171")))
-            else:
-                item_delta.setForeground(QBrush(QColor("#4ade80")))
-            item_delta.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(i, 2, item_delta)
-            self.table.setItem(i, 3, QTableWidgetItem(row["x"]))
-            self.table.setItem(i, 4, QTableWidgetItem(row["y"]))
-            self.table.setItem(i, 5, QTableWidgetItem(row["advice"]))
+            item_delta = QTableWidgetItem(f"{val * factor:+.2f}")
+            item_delta.setForeground(QColor("#F87171") if val > 0 else QColor("#4ADE80"))
+            item_delta.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.setItem(i, 2, item_delta)
+            self.setItem(i, 3, QTableWidgetItem(row["x"]))
+            self.setItem(i, 4, QTableWidgetItem(row["y"]))
+            self.setItem(i, 5, QTableWidgetItem(row["advice"]))
 
     def _on_selection(self):
-        rows = self.table.selectedIndexes()
+        rows = self.selectedIndexes()
         if rows:
             self.point_highlighted.emit(rows[0].row())

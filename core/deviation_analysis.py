@@ -8,6 +8,8 @@ def analyze(points, fitted, feature_type=FeatureType.CAVITY, unit="mm"):
         dx = p.x - fitted.cx
         dy = p.y - fitted.cy
         theta = np.arctan2(dy, dx)
+        if theta < 0:
+            theta += 2.0 * np.pi
         r = np.sqrt(dx * dx + dy * dy)
         delta_r = r - fitted.radius
         polar.append(PolarPoint(

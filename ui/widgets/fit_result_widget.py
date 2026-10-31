@@ -1,61 +1,72 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton
-from PyQt5.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QHBoxLayout, QLabel
+
+from fluent.widgets import FluentButton, FluentCard, FluentComboBox, FluentLineEdit
 from models.data_models import FeatureType
 
 
-class FitResultWidget(QWidget):
-    feature_changed = pyqtSignal(FeatureType)
-    fit_clicked = pyqtSignal()
+class FitResultWidget(FluentCard):
+    feature_changed = Signal(FeatureType)
+    fit_clicked = Signal()
+    design_radius_changed = Signal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setMinimumWidth(280)
+        self._locked = False
         self._setup_ui()
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(4)
+        title = QLabel("拟合设置")
+        title.setStyleSheet("font-size: 13px; font-weight: 600; background: transparent;")
+        self.addWidget(title)
 
-        self.btn_fit = QPushButton("\U0001f3af \u6267\u884c\u62df\u5408")
-        self.btn_fit.setStyleSheet("""
-            QPushButton { background: #3b82f6; color: white;
-                          border: none; padding: 6px 16px;
-                          border-radius: 4px; font-size: 10pt; font-weight: bold; }
-            QPushButton:hover { background: #2563eb; }
-        """)
+        self.btn_fit = FluentButton("执行拟合", variant="accent")
         self.btn_fit.clicked.connect(self.fit_clicked.emit)
-        layout.addWidget(self.btn_fit)
+        self.addWidget(self.btn_fit)
 
-        ft_label = QLabel("\u7279\u5f81\u7c7b\u578b:")
-        ft_label.setStyleSheet("color: #9898b8; font-size: 9pt;")
-        layout.addWidget(ft_label)
-
-        self.feature_combo = QComboBox()
-        self.feature_combo.addItems(["\u578b\u8154(Cavity)", "\u578b\u82af(Core)"])
+        self.addWidget(self._label("特征类型："))
+        self.feature_combo = FluentComboBox(["型腔(Cavity)", "型芯(Core)"])
         self.feature_combo.currentIndexChanged.connect(self._on_change)
-        self.feature_combo.setStyleSheet("""
-            QComboBox { background: #252542; color: #e8e8f0;
-                       border: none; padding: 4px 8px;
-                       border-radius: 3px; font-size: 9pt; }
-            QComboBox::drop-down { border: none; }
-            QComboBox QAbstractItemView { background: #1e1e36; color: #e8e8f0;
-                                         selection-background-color: #3b82f6; }
-        """)
-        layout.addWidget(self.feature_combo)
+        self.addWidget(self.feature_combo)
 
-        sep = QLabel("\u2014 \u62df\u5408\u7ed3\u679c \u2014")
-        sep.setStyleSheet("color: #6b6b8a; font-size: 9pt; padding: 4px 0;")
-        layout.addWidget(sep)
+        self.addWidget(self._label("拟合方法："))
+        self.method_combo = FluentComboBox(["Taubin (推荐)", "Kasa (最小二乘)"])
+        self.addWidget(self.method_combo)
+
+        # ── 设计半径输入 ──
+        self.addWidget(self._label("设计半径："))
+        dr_row = QHBoxLayout()
+        self.design_radius_input = FluentLineEdit(placeholder="输入图纸设计半径…")
+        dr_row.addWidget(self.design_radius_input, 1)
+        self.btn_apply_dr = FluentButton("应用")
+        self.btn_apply_dr.setEnabled(False)
+        self.btn_apply_dr.clicked.connect(self._apply_design_radius)
+        dr_row.addWidget(self.btn_apply_dr)
+
+        self.btn_lock = FluentButton("锁定")
+        self.btn_lock.setCheckable(True)
+        self.btn_lock.setMinimumWidth(64)
+        self.btn_lock.toggled.connect(self._on_lock_toggled)
+        dr_row.addWidget(self.btn_lock)
+        self.layout().addLayout(dr_row)
+
+        sep = QLabel("— 拟合结果 —")
+        sep.setStyleSheet("color: #6E6E6E; background: transparent; padding: 4px 0;")
+        self.addWidget(sep)
 
         self._labels = {}
         for key, txt in [("cx", "X:"), ("cy", "Y:"), ("r", "R:"),
-                          ("roundness", "\u5706\u5ea6:"), ("rmse", "RMSE:")]:
-            lbl = QLabel(f"{txt} \u2014")
-            lbl.setStyleSheet("color: #6b6b8a; font-size: 9pt;")
-            layout.addWidget(lbl)
+                          ("roundness", "圆度:"), ("rmse", "RMSE:")]:
+            lbl = QLabel(f"{txt} —")
+            lbl.setStyleSheet("color: #9D9D9D; background: transparent; font-size: 12px;")
+            self.addWidget(lbl)
             self._labels[key] = lbl
 
-        layout.addStretch()
+    def _label(self, text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet("color: #9D9D9D; background: transparent; font-size: 12px;")
+        return lbl
 
     def _on_change(self, idx):
         ft = FeatureType.CAVITY if idx == 0 else FeatureType.CORE
@@ -64,12 +75,57 @@ class FitResultWidget(QWidget):
     def get_feature_type(self):
         return FeatureType.CAVITY if self.feature_combo.currentIndex() == 0 else FeatureType.CORE
 
-    def update_results(self, result):
+    def get_fitting_method(self):
+        return "taubin" if self.method_combo.currentIndex() == 0 else "kasa"
+
+    def _apply_design_radius(self):
+        try:
+            val = float(self.design_radius_input.text().strip())
+            if val > 0:
+                self.design_radius_changed.emit(val)
+        except ValueError:
+            pass
+
+    def _on_lock_toggled(self, checked):
+        self._locked = checked
+        self.design_radius_input.setReadOnly(checked)
+        self.btn_lock.setText("已锁定" if checked else "锁定")
+        self.btn_lock.variant = "accent" if checked else "standard"
+        self.btn_lock.update()
+        if checked:
+            val = self.get_design_radius()
+            if val and val > 0:
+                self.design_radius_changed.emit(val)
+
+    def get_design_radius(self):
+        try:
+            return float(self.design_radius_input.text().strip())
+        except ValueError:
+            return None
+
+    def enable_design_radius(self, fitted_radius):
+        """拟合后预填拟合半径并启用应用按钮。
+
+        若设计半径已锁定，则保留用户输入值并返回它以便自动重新应用，
+        否则用拟合半径覆盖输入框并返回 None。
+        """
+        self.btn_apply_dr.setEnabled(True)
+        if self._locked:
+            return self.get_design_radius()
+        self.design_radius_input.setText(f"{fitted_radius:.4f}")
+        return None
+
+    def update_results(self, result, unit="mm", design_radius=None):
+        factor = 1000.0 if unit == "μm" else 1.0
+        r_text = f"R(拟合): {result.fitted.radius:.4f}"
+        if design_radius is not None:
+            r_text += f"  |  设计: {design_radius:.4f}"
         vals = {"cx": f"X: {result.fitted.cx:.4f}",
                 "cy": f"Y: {result.fitted.cy:.4f}",
-                "r": f"R: {result.fitted.radius:.4f}",
-                "roundness": f"\u5706\u5ea6: {result.roundness:.4f}",
-                "rmse": f"RMSE: {result.fitted.rmse:.6f}"}
+                "r": r_text,
+                "roundness": f"圆度: {result.roundness * factor:.4f} {unit}",
+                "rmse": f"RMSE: {result.fitted.rmse * factor:.6f} {unit}"}
         for key, text in vals.items():
             self._labels[key].setText(text)
-            self._labels[key].setStyleSheet("color: #e8e8f0; font-size: 9pt;")
+            self._labels[key].setStyleSheet(
+                "color: #FFFFFF; background: transparent; font-size: 12px;")

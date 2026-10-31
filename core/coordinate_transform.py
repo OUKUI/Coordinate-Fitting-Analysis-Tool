@@ -8,6 +8,8 @@ def to_polar(points, fitted, theta_offset=0.0):
         dx = p.x - fitted.cx
         dy = p.y - fitted.cy
         theta = np.arctan2(dy, dx) + theta_offset
+        if theta < 0:
+            theta += 2.0 * np.pi
         r = np.sqrt(dx * dx + dy * dy)
         delta_r = r - fitted.radius
         polar.append(PolarPoint(
